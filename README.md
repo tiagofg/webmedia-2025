@@ -1,4 +1,4 @@
-# Moderando Conteúdo Textual via Sistema Multiagentes com Modelos de Linguagem
+# Multi-Agent LLM Approach for Moderating E-Commerce Customer Service Responses
 
 Esse repositório tem como objetivo exibir os agentes e tools criados para o artigo submetido para a WebMedia 2025
 
