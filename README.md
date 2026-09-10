@@ -1,27 +1,45 @@
 # Multi-Agent LLM Approach for Moderating E-Commerce Customer Service Responses
 
-Esse repositório tem como objetivo exibir os agentes e tools criados para o artigo submetido para a WebMedia 2025
+This repository is a research companion associated with WebMedia 2025. It presents the agent prompts and context-update tools for a multi-agent workflow that reviews and, when needed, rewrites customer-service answers in Portuguese or Spanish.
 
-## Agentes
+The repository contains the workflow's components rather than a complete application: there is no runner, dependency manifest, API, dataset, automated test suite, or CI configuration here.
 
-Foram criados 5 agentes, distribuídos na seguinte estrutura:
+## Workflow
 
-1. [Revisor Semântico](agents/semantic_reviewer.py)
-2. [Revisor Contextual](agents/contextual_reviewer.py)
-3. [Recomendador de melhorias](agents/suggester.py)
-4. [Reescritor](agents/rewriter.py)
-5. [Decisor](agents/decider.py)
+The intended control flow is encoded by the return targets in the tools:
 
-Cada um deles possui instruções claras em inglês sobre o papel deles, as informações que eles terão disponíveis para as tomadas de decisão e a tool que deve ser chamada para registrar as respostas deles no contexto.
+1. The semantic reviewer scores how directly and clearly an answer addresses the question on a 0–5 scale.
+2. The contextual reviewer scores consistency with the supplied context and metadata on a 0–5 scale and adds the two scores.
+3. An original total above 8 terminates the flow. Otherwise, the suggester records concrete improvements and hands off to the rewriter.
+4. The rewriter creates a candidate answer or returns `CANNOT REWRITE`, which terminates with `DO_NOT_ANSWER`.
+5. A revised answer is reviewed again. The decider can accept it, request another rewrite, or reject it.
+
+The decider's prompt instructs it to reject an answer after two unsuccessful revisions. That constraint is prompt guidance; the tool functions record and route the decision but do not independently enforce the revision limit.
+
+## Agents
+
+| Agent | Responsibility |
+| --- | --- |
+| [Semantic reviewer](agents/semantic_reviewer.py) | Evaluates relevance, completeness, language, and clarity |
+| [Contextual reviewer](agents/contextual_reviewer.py) | Checks claims against context and metadata and calculates a combined score |
+| [Suggester](agents/suggester.py) | Turns review findings into revision guidance |
+| [Rewriter](agents/rewriter.py) | Produces a revised answer in the question's language |
+| [Decider](agents/decider.py) | Chooses `ANSWER_REVISED`, `REWRITE`, or `DO_NOT_ANSWER` |
+
+All five agents are configured for `qwen3:8b` through Ollama's OpenAI-compatible endpoint at `http://localhost:11434/v1`, with temperature `0.0`.
 
 ## Tools
 
-Todos os agentes tem funções associadas a eles que devem ser chamadas após cada execução, elas estão distribuídas da seguinte maneira:
+| Tool | State transition |
+| --- | --- |
+| [`register_semantic_score`](tools/register_semantic_score.py) | Stores the original or revised semantic score, then routes to the contextual reviewer |
+| [`register_contextual_score`](tools/register_contextual_score.py) | Stores the contextual score, calculates the total, then terminates or routes to the suggester/decider |
+| [`register_suggestions`](tools/register_suggestions.py) | Stores improvement guidance, then routes to the rewriter |
+| [`register_revised_answer`](tools/register_revised_answer.py) | Stores a candidate, increments the revision count, then terminates or routes to semantic review |
+| [`register_decision`](tools/register_decision.py) | Accepts, rejects, or promotes the candidate into another rewrite round |
 
-1. [register_semantic_score](tools/register_semantic_score.py)
-2. [register_contextual_score](tools/register_contextual_score.py)
-3. [register_suggestions](tools/register_suggestions.py)
-4. [register_revised_answer](tools/register_revised_answer.py)
-5. [register_decision](tools/register_decision.py)
+The modules use cross-package imports such as `from agents import ...` and `from tools import ...`, but the tree does not include package initializer files that re-export those names. In particular, several agent modules import a `register_*` name from `tools` rather than importing the function from its module, unlike `semantic_reviewer.py`. An integrating runner may need to make those imports resolve to callables. It must also initialize `ContextVariables` with every field the tools read, construct the AG2 group pattern, supply an initial message, and ensure the repository root is importable. Those wiring pieces are outside this repository.
 
-Através delas, os agentes registram no contexto suas resposta, realizam os processamentos necessários e decidem qual agente deve ser chamado na sequência.
+## Related implementation
+
+The separate [`answer_reviewer`](https://github.com/tiagofg/answer_reviewer) repository contains FastAPI experiments around related answer-review workflows. It is a separate codebase and is not required by these modules.
